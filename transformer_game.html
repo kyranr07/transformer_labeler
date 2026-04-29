@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How do Transformers Predict the Next Word?</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #1B1E4A;
+    --navy2: #2F3167;
+    --yellow: #FEC214;
+    --white: #FFFFFF;
+    --grey: #8B8FAD;
+    --green: #00C9A7;
+    --red: #FF5E7D;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #13153a;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+
+  .gw {
+    width: 100%;
+    max-width: 700px;
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy2) 100%);
+    border-radius: 20px;
+    padding: 32px 28px 28px;
+    color: var(--white);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  }
+
+  .eyebrow {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--yellow);
+    margin-bottom: 6px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    line-height: 1.2;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--grey);
+    margin-bottom: 24px;
+  }
+
+  .step-inner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+  }
+
+  .step-num {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(254,194,20,0.15);
+    border: 1.5px solid rgba(254,194,20,0.4);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--yellow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .step-content { flex: 1; min-width: 0; }
+
+  .step-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--white);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(254,194,20,0.15);
+    color: var(--yellow);
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.5px;
+  }
+
+  .step-desc {
+    font-size: 11px;
+    color: var(--grey);
+    margin-bottom: 10px;
+    line-height: 1.5;
+  }
+
+  .drop-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .lbl {
+    font-size: 11px;
+    color: var(--grey);
+    font-family: 'Space Mono', monospace;
+    white-space: nowrap;
+  }
+
+  .drop-slot {
+    min-width: 90px;
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 2px dashed rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.04);
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    font-style: italic;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Space Mono', monospace;
+    white-space: nowrap;
+  }
+
+  .drop-slot.drag-over {
+    border-color: var(--yellow);
+    background: rgba(254,194,20,0.12);
+    color: var(--yellow);
+  }
+
+  .drop-slot.filled {
+    border: 2px solid rgba(255,255,255,0.25);
+    background: rgba(61,65,145,0.6);
+    color: var(--white);
+    font-style: normal;
+  }
+
+  .drop-slot.correct {
+    border-color: var(--green);
+    background: rgba(0,201,167,0.15);
+    color: var(--green);
+  }
+
+  .drop-slot.wrong {
+    border-color: var(--red);
+    background: rgba(255,94,125,0.1);
+    color: var(--red);
+  }
+
+  .connector {
+    width: 2px;
+    background: rgba(255,255,255,0.1);
+    margin: 0 auto 0 22px;
+    height: 10px;
+  }
+
+  .pieces-section { margin-top: 20px; }
+
+  .pieces-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--grey);
+    margin-bottom: 12px;
+  }
+
+  .pieces { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .piece {
+    padding: 7px 13px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: grab;
+    transition: all 0.18s;
+    user-select: none;
+    border: 1.5px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.07);
+    color: var(--white);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .piece:hover {
+    background: rgba(254,194,20,0.12);
+    border-color: var(--yellow);
+    color: var(--yellow);
+    transform: translateY(-1px);
+  }
+
+  .piece.selected {
+    background: rgba(254,194,20,0.18);
+    border-color: var(--yellow);
+    color: var(--yellow);
+  }
+
+  .piece.used {
+    opacity: 0;
+    pointer-events: none;
+    height: 0;
+    padding: 0;
+    margin: 0;
+    border: none;
+    overflow: hidden;
+  }
+
+  .piece-hint {
+    font-size: 9px;
+    color: var(--grey);
+    font-family: 'DM Sans', sans-serif;
+    margin-top: 3px;
+    font-style: italic;
+    display: block;
+    font-weight: 400;
+  }
+
+  .piece.selected .piece-hint { color: rgba(254,194,20,0.6); }
+
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 20px;
+  }
+
+  .score {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--grey);
+  }
+
+  .score span { color: var(--yellow); font-weight: 700; }
+
+  .btn-row { display: flex; gap: 8px; }
+
+  .btn {
+    padding: 9px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.18s;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .btn-check { background: var(--yellow); color: var(--navy); }
+  .btn-check:hover { background: #ffd454; transform: translateY(-1px); }
+
+  .btn-reset {
+    background: transparent;
+    color: var(--grey);
+    border: 1.5px solid rgba(255,255,255,0.15);
+  }
+  .btn-reset:hover { color: var(--white); border-color: rgba(255,255,255,0.35); }
+
+  .result-msg {
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 14px;
+    display: none;
+  }
+  .result-msg.show { display: block; }
+  .result-msg.success { background: rgba(0,201,167,0.12); border: 1px solid var(--green); color: var(--green); }
+  .result-msg.fail    { background: rgba(255,94,125,0.08); border: 1px solid var(--red);   color: var(--red);   }
+</style>
+</head>
+<body>
+
+<div class="gw">
+  <div class="eyebrow">Inspirit AI</div>
+  <h1>How do Transformers Predict the Next Word?</h1>
+  <p class="subtitle">The pipeline steps are given — drag the correct data into each slot.</p>
+
+  <div class="step-inner">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <div class="step-label">Tokenization <span class="tag">step</span></div>
+      <div class="step-desc">Split the input sentence into individual tokens (words or subwords).</div>
+      <div class="drop-row">
+        <span class="lbl">'The food was' →</span>
+        <div class="drop-slot" id="d0" ondragover="ov(event)" ondragleave="ol(event)" ondrop="dp(event,0)" onclick="hc(0)">token list</div>
+      </div>
+    </div>
+  </div>
+  <div class="connector"></div>
+
+  <div class="step-inner">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <div class="step-label">Embedding <span class="tag">step</span></div>
+      <div class="step-desc">Convert each token into a numeric vector representing its meaning — before seeing any context.</div>
+      <div class="drop-row">
+        <span class="lbl">'food' →</span>
+        <div class="drop-slot" id="d1" ondragover="ov(event)" ondragleave="ol(event)" ondrop="dp(event,1)" onclick="hc(1)">embedding vector</div>
+      </div>
+    </div>
+  </div>
+  <div class="connector"></div>
+
+  <div class="step-inner">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <div class="step-label">Self-Attention <span class="tag">step</span></div>
+      <div class="step-desc">Tokens look at each other to build context. The result is a single score measuring how much one token should "attend to" another.</div>
+      <div class="drop-row">
+        <span class="lbl">attention('was' → 'food') =</span>
+        <div class="drop-slot" id="d2" ondragover="ov(event)" ondragleave="ol(event)" ondrop="dp(event,2)" onclick="hc(2)">attention score</div>
+      </div>
+    </div>
+  </div>
+  <div class="connector"></div>
+
+  <div class="step-inner">
+    <div class="step-num">4</div>
+    <div class="step-content">
+      <div class="step-label">Next Token Prediction <span class="tag">step</span></div>
+      <div class="step-desc">Pick the token with the highest probability as the predicted next word.</div>
+      <div class="drop-row">
+        <span class="lbl">predicted →</span>
+        <div class="drop-slot" id="d3" ondragover="ov(event)" ondragleave="ol(event)" ondrop="dp(event,3)" onclick="hc(3)">answer</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pieces-section">
+    <div class="pieces-label">Available Pieces</div>
+    <div class="pieces" id="pieces-container"></div>
+  </div>
+
+  <div id="rmsg" class="result-msg"></div>
+
+  <div class="footer">
+    <div class="score">Score: <span id="sv">0</span>/4</div>
+    <div class="btn-row">
+      <button class="btn btn-check" onclick="check()">Check Answer</button>
+      <button class="btn btn-reset" onclick="reset()">↺ Reset</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const PIECES = [
+    { id: 'p0', label: "['the','food','was']",  hint: 'list of tokens' },
+    { id: 'p1', label: '[0.2, 0.8, 0.1, ...]',  hint: 'vector of ~hundreds of numbers' },
+    { id: 'p2', label: '0.91',                   hint: 'single score, 0 → 1' },
+    { id: 'p3', label: "'Delicious'",             hint: 'highest-prob token' },
+  ];
+
+  const ANS = ['p0', 'p1', 'p2', 'p3'];
+  const PH  = ['token list', 'embedding vector', 'attention score', 'answer'];
+
+  let slots    = Array(4).fill(null);
+  let dragging = null;
+  let selected = null;
+
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function renderPieces() {
+    const c = document.getElementById('pieces-container');
+    c.innerHTML = '';
+    shuffle(PIECES).forEach(p => {
+      const el = document.createElement('div');
+      el.className  = 'piece';
+      el.draggable  = true;
+      el.id         = p.id;
+      el.innerHTML  = p.label + '<span class="piece-hint">' + p.hint + '</span>';
+      el.addEventListener('dragstart', e => ds(e, p.id));
+      el.addEventListener('click', () => sp(p.id));
+      c.appendChild(el);
+    });
+  }
+
+  function ds(e, id) {
+    dragging = id;
+    e.dataTransfer.setData('text', id);
+  }
+
+  function ov(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+  function ol(e) { e.currentTarget.classList.remove('drag-over'); }
+
+  function dp(e, si) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    const id = e.dataTransfer.getData('text') || dragging;
+    if (id) place(id, si);
+    dragging = null;
+  }
+
+  function sp(id) {
+    if (selected && selected !== id) document.getElementById(selected).classList.remove('selected');
+    if (selected === id) {
+      document.getElementById(id).classList.remove('selected');
+      selected = null;
+    } else {
+      document.getElementById(id).classList.add('selected');
+      selected = id;
+    }
+  }
+
+  function hc(si) {
+    if (!selected) return;
+    place(selected, si);
+    document.getElementById(selected).classList.remove('selected');
+    selected = null;
+  }
+
+  function place(pid, si) {
+    const prev = slots.indexOf(pid);
+    if (prev !== -1) {
+      slots[prev] = null;
+      const pd = document.getElementById('d' + prev);
+      pd.className   = 'drop-slot';
+      pd.textContent = PH[prev];
+    }
+    const old = slots[si];
+    if (old) document.getElementById(old).classList.remove('used');
+    slots[si] = pid;
+    const d = document.getElementById('d' + si);
+    d.textContent = PIECES.find(p => p.id === pid).label;
+    d.className   = 'drop-slot filled';
+    document.getElementById(pid).classList.add('used');
+    document.getElementById('rmsg').className = 'result-msg';
+  }
+
+  function check() {
+    let c = 0;
+    for (let i = 0; i < 4; i++) {
+      const d = document.getElementById('d' + i);
+      if      (slots[i] === ANS[i]) { d.className = 'drop-slot correct'; c++; }
+      else if (slots[i])            { d.className = 'drop-slot wrong'; }
+    }
+    document.getElementById('sv').textContent = c;
+    const m = document.getElementById('rmsg');
+    if (c === 4) {
+      m.textContent = 'Perfect! You mapped the full transformer pipeline correctly.';
+      m.className   = 'result-msg show success';
+    } else {
+      m.textContent = c + '/4 correct — red slots are wrong. Try swapping them!';
+      m.className   = 'result-msg show fail';
+    }
+  }
+
+  function reset() {
+    slots = Array(4).fill(null);
+    for (let i = 0; i < 4; i++) {
+      const d = document.getElementById('d' + i);
+      d.textContent = PH[i];
+      d.className   = 'drop-slot';
+    }
+    renderPieces();
+    document.getElementById('sv').textContent = '0';
+    document.getElementById('rmsg').className = 'result-msg';
+    selected = null;
+  }
+
+  renderPieces();
+</script>
+</body>
+</html>
